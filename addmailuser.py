@@ -17,6 +17,7 @@ from pathlib import Path
 from getpass import getpass
 from rich.console import Console  # Import Console from rich
 from pydebugger.debug import debug  # Import the debug function
+from passlib.hash import sha256_crypt  # Import sha256_crypt for password hashing
 
 console = Console()  # Initialize the Console
 
@@ -34,6 +35,10 @@ class User:
     def __repr__(self):
         return f"User({self.email})"
     
+    @classmethod    
+    def generate_sha256_crypt_password(password: str) -> str:
+        return sha256_crypt.hash(password)
+
     @classmethod    
     def hash_password(cls, password):
         """Hashes the password using Dovecot's SHA256-CRYPT."""
@@ -128,7 +133,8 @@ if __name__ == "__main__":
         console.print("Email and password are required.", style="white on black")  # Error message
         exit
         
-    hashed_pw = User.hash_password(args.password)
+    # hashed_pw = User.hash_password(args.password)
+    hashed_pw = User.generate_sha256_crypt_password(args.password)
     
     if hashed_pw:
         User.insert_user(args.email, hashed_pw)
