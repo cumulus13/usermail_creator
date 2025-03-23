@@ -36,7 +36,7 @@ class User:
         return f"User({self.email})"
     
     @classmethod    
-    def generate_sha256_crypt_password(password: str) -> str:
+    def generate_sha256_crypt_password(cls, password: str) -> str:
         return sha256_crypt.hash(password)
 
     @classmethod    
