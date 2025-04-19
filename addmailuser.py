@@ -21,7 +21,11 @@ from getpass import getpass
 from rich.console import Console  # Import Console from rich
 from pydebugger.debug import debug  # Import the debug function
 from passlib.hash import sha256_crypt  # Import sha256_crypt for password hashing
-
+try:
+    from . import adddirectorymail
+except:
+    import adddirectorymail
+    
 console = Console()  # Initialize the Console
 
 class User:
@@ -203,6 +207,8 @@ class User:
         conn.commit()
         cursor.close()
         conn.close()
+        adddirectorymail.add_folder(email)
+        # console.print(f"User {email} added successfully.", style="bold #0000FF")
         return True
 
 if __name__ == "__main__":
