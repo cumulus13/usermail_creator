@@ -21,12 +21,30 @@ from getpass import getpass
 from rich.console import Console  # Import Console from rich
 from pydebugger.debug import debug  # Import the debug function
 from passlib.hash import sha256_crypt  # Import sha256_crypt for password hashing
+from rich_argparse import RichHelpFormatter, _lazy_rich as rr
+from typing import ClassVar
 try:
     from . import adddirectorymail
 except:
     import adddirectorymail
+import getpass
+import os
     
 console = Console()  # Initialize the Console
+
+class CustomRichHelpFormatter(RichHelpFormatter):
+    """A custom RichHelpFormatter with modified styles."""
+
+    styles: ClassVar[dict[str, rr.StyleType]] = {
+        "argparse.args": "bold #FFFF00",
+        "argparse.groups": "#AA55FF",
+        "argparse.help": "bold #00FFFF",
+        "argparse.metavar": "bold #FF00FF",
+        "argparse.syntax": "underline",
+        "argparse.text": "white",
+        "argparse.prog": "bold #00AAFF italic",
+        "argparse.default": "bold",
+    }
 
 class User:
     configname = str(Path(__file__).parent / Path(__file__).stem) + ".ini"
@@ -210,25 +228,119 @@ class User:
         adddirectorymail.add_folder(email)
         # console.print(f"User {email} added successfully.", style="bold #0000FF")
         return True
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Insert a user into the mail database (Postfix + Dovecot + MySQL).")
-    parser.add_argument("email", help="Email address of the user", nargs='?')
-    parser.add_argument("password", help="Plaintext password of the user", nargs='?')
     
-    args = parser.parse_args()
-    if not args.email: args.email = console.input("[bold #FF00FF]Enter email    : [/]")
-    if not args.password: args.password = getpass("Enter password : ")
-    
-    if not args.email or not args.password:
-        console.print("Email and password are required.", style="white on red")  # Error message
-        exit
+    @classmethod
+    def list_users(cls):
+        """Lists all users in the mail.virtual_users table."""
+        db_config, _ = cls.config()
+        database = db_config["database"]
         
-    # hashed_pw = User.hash_password(args.password)
-    hashed_pw = User.generate_sha256_crypt_password(args.password)
+        try:
+            conn = MySQLdb.connect(
+                host=db_config["host"],
+                user=db_config["user"],
+                passwd=db_config["password"],
+                db=database
+            )
+            cursor = conn.cursor()
+            query = f"""SELECT email FROM {database}.virtual_users"""
+            cursor.execute(query)
+            users = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            
+            if users:
+                console.print("[bold green]Users:[/]")
+                for user in users:
+                    console.print(f"- {user[0]}")
+            else:
+                console.print("[yellow]No users found.[/]")
+        except MySQLdb.Error as err:
+            console.print(f"Database error: {err}", style="red")
     
-    if hashed_pw:
-        User.insert_user(args.email, hashed_pw)
-        console.print(f"User {args.email} added successfully.", style="bold #0000FF")  # Success message
-    else:
-        console.print("Error hashing password.", style="white on black")  # Error message
+    @classmethod
+    def input_password_masked(cls, prompt="Enter password: "):
+        # Prompt for password with '*' masking
+        if os.name == 'nt':
+        # Windows: fallback to getpass (no masking)
+            return getpass.getpass(prompt)
+        else:
+            import termios  
+            import tty
+
+            # Unix-like: mask with '*'
+            sys.stdout.write(prompt)
+            sys.stdout.flush()
+            password = ""
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(fd)
+                while True:
+                    ch = sys.stdin.read(1)
+                    if ch in ('\n', '\r'):
+                        sys.stdout.write('\n')
+                        break
+                    elif ch == '\x03':  # Ctrl-C
+                        raise KeyboardInterrupt
+                    elif ch == '\x7f':  # Backspace
+                        if len(password) > 0:
+                            password = password[:-1]
+                            sys.stdout.write('\b \b')
+                            sys.stdout.flush()
+                    else:
+                        password += ch
+                        sys.stdout.write('*')
+                        sys.stdout.flush()
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            return password
+
+    @classmethod
+    def update_user(cls, old_username = None, old_password = None, new_username = None, new_password = None):
+        # first check if old_userame if exists then check if old_password is same
+        # then check if new_username is provided but new_password not then update username only with old_password
+        # if new_username and new_password then update both of them to db
+        # new_password input must verify or two times input too verify
+        pass
+
+    @classmethod
+    def usage(cls):
+        parser = argparse.ArgumentParser(description="Insert a user into the mail database (Postfix + Dovecot + MySQL).", formatter_class=CustomRichHelpFormatter)
+        parser.add_argument("email", help="Email address of the user", nargs='?')
+        parser.add_argument("password", help="Plaintext password of the user", nargs='?')
+        parser.add_argument('-l', '--list', action='store_true', help='List all users in the mail database')
+        
+        if len(sys.argv) == 1:
+            parser.print_help()
+            q = console.input("[bold #FFFF00]\nDo you want to add a user? (y/n): [/]")
+            if q.lower() != 'y':
+                console.print("Exiting without adding a user.", style="white on black")
+                exit(0)
+        args = parser.parse_args()
+        if args.list:
+            cls.list_users()
+        else:
+            if not args.email: args.email = console.input("[bold #00FFFF]Enter email    : [/]")
+            if not args.password:
+                try:
+                    args.password = cls.input_password_masked("[bold #00FFFF]Enter password : [/] ")
+                except Exception:
+                    args.password = getpass.getpass("Enter password : ")
+            
+            if not args.email or not args.password:
+                console.print("Email and password are required.", style="white on red")  # Error message
+                exit
+                
+            # hashed_pw = User.hash_password(args.password)
+            hashed_pw = cls.generate_sha256_crypt_password(args.password)
+            
+            if hashed_pw:
+                cls.insert_user(args.email, hashed_pw)
+                console.print(f"User {args.email} added successfully.", style="bold #0000FF")  # Success message
+            
+            else:
+                console.print("Error hashing password.", style="white on black")  # Error message
+
+if __name__ == '__main__':
+    User.usage()
