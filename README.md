@@ -45,7 +45,7 @@ A Python script to add a user to the mail database (Postfix + Dovecot + MySQL). 
 
 ```bash
 
-usage: addmailuser.py [-h] [email] [password]
+usage: addmailuser.py [-h] [-l] [email] [password]
 
   
 
@@ -64,6 +64,7 @@ password Plaintext password of the user
 options:
 
 -h, --help show this help message and exit
+-l, --list  List all users in the mail database
 
 ```
 
